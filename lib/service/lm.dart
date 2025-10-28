@@ -14,14 +14,14 @@ class CactusLM {
     required String modelUrl,
     String? cactusToken,
   }) async {
-    final actualFilename = modelUrl.split('?').first.split('/').last;
-    final success = await downloadAndExtractModel(modelUrl, actualFilename, modelUrl);
+    final actualFilename = modelUrl.split('/').last;
+    final modelFolder = modelUrl.split('/').last.replaceAll('.zip', '');
+    final success = await downloadAndExtractModel(modelUrl, actualFilename, modelFolder);
 
     if(!success) {
       throw Exception('Failed to download and extract model from $modelUrl');
     }
 
-    final modelFolder = modelUrl.split('/').last;
     final appDocDir = await getApplicationDocumentsDirectory();
     final modelPath = '${appDocDir.path}/$modelFolder';
 
@@ -30,7 +30,7 @@ class CactusLM {
     if(_handle == null) {
       throw Exception('Cactus model is not loaded. Please load the model before generating completions.');
     }
-    return CactusContext.completionStream(_handle!, [ChatMessage(content: prompt, role: 'user')]);
+    return CactusContext.completionStream(_handle!, [ChatMessage(content: '/no_think $prompt', role: 'user')]);
   }
 
   void unload() {
