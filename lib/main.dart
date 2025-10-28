@@ -15,13 +15,15 @@ class MainApp extends StatefulWidget {
 
 class _MainAppState extends State<MainApp> {
   String? response;
+  double tps = 0;
+  int tokens = 0;
   final lm = CactusLM();
 
   Future<void> generateStreamCompletion() async {
     
     try {
       final streamedResult = await lm.generateCompletion(
-        modelUrl: 'https://example.com/path/to/cactus-model.zip',
+        modelUrl: 'https://vlqqczxwyaodtcdmdmlw.supabase.co/storage/v1/object/public/cactus-models/qwen3-0.6.zip',
         prompt: 'Hello, how are you?'
       );
 
@@ -35,6 +37,8 @@ class _MainAppState extends State<MainApp> {
       if (resp.success) {
         setState(() {
           response = resp.response;
+          tps = resp.tokensPerSecond;
+          tokens = resp.totalTokens;
         });
       } 
     } catch (e) {
@@ -47,17 +51,24 @@ class _MainAppState extends State<MainApp> {
     return MaterialApp(
       home: Scaffold(
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('Cactus LM Stream Completion Example'),
-              ElevatedButton(onPressed: generateStreamCompletion, child: const Text('Generate')),
-              if (response != null) ...[
-                const SizedBox(height: 20),
-                Text(response ?? ''),
+          child: Padding(
+            padding: EdgeInsetsGeometry.all(12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Cactus LM'),
+                SizedBox(height: 20),
+                ElevatedButton(onPressed: generateStreamCompletion, child: const Text('Generate')),
+                if (response != null) ...[
+                  Text(response ?? ''),
+                ],
+                if (tokens > 0) ...[
+                  const SizedBox(height: 10),
+                  Text('Total Tokens: $tokens, Tokens per Second: ${tps.toStringAsFixed(2)}'),
+                ],
               ],
-            ],
-          ),
+            )
+          )
         ),
       ),
     );
