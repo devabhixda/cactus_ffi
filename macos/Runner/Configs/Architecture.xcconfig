@@ -1,0 +1,5 @@
+// Architecture configuration
+// Build only for arm64 (Apple Silicon) since the cactus.xcframework only contains arm64 slice
+ARCHS = arm64
+ONLY_ACTIVE_ARCH = NO
+VALID_ARCHS = arm64
