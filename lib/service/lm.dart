@@ -13,6 +13,7 @@ class CactusLM {
     required String prompt,
     required String modelUrl,
     String? cactusToken,
+    bool? usePerformanceMode,
   }) async {
     final actualFilename = modelUrl.split('/').last;
     final modelFolder = modelUrl.split('/').last.replaceAll('.zip', '');
@@ -29,8 +30,12 @@ class CactusLM {
 
     if(_handle == null) {
       throw Exception('Cactus model is not loaded. Please load the model before generating completions.');
-    }
-    return CactusContext.completionStream(_handle!, [ChatMessage(content: '/no_think $prompt', role: 'user')]);
+    }    
+    return CactusContext.completionStream(
+      _handle!, 
+      [ChatMessage(content: '/no_think $prompt', role: 'user')],
+      performanceMode: usePerformanceMode ?? false,
+    );
   }
 
   void unload() {

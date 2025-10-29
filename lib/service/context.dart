@@ -31,27 +31,27 @@ void _staticTokenCallbackDispatcher(Pointer<Utf8> tokenC, int tokenId, Pointer<V
 Future<int?> _initContextInIsolate(Map<String, dynamic> params) async {
   Timeline.startSync('isolate_init_context');
   try {
-  final modelPath = params['modelPath'] as String;
-  final contextSize = params['contextSize'] as int;
+    final modelPath = params['modelPath'] as String;
+    final contextSize = params['contextSize'] as int;
 
-  try {
-    debugPrint('Initializing context with model: $modelPath, contextSize: $contextSize');
-    final modelPathC = modelPath.toNativeUtf8(allocator: calloc);
     try {
+      debugPrint('Initializing context with model: $modelPath, contextSize: $contextSize');
+      final modelPathC = modelPath.toNativeUtf8(allocator: calloc);
+      try {
         Timeline.startSync('ffi_cactusInit');
-      final handle = bindings.cactusInit(modelPathC, contextSize);
+        final handle = bindings.cactusInit(modelPathC, contextSize);
         Timeline.finishSync();
         
-      if (handle != nullptr) {
-        return handle.address;
-      } else {
-        return null;
+        if (handle != nullptr) {
+          return handle.address;
+        } else {
+          return null;
+        }
+      } finally {
+        calloc.free(modelPathC);
       }
-    } finally {
-      calloc.free(modelPathC);
-    }
-  } catch (e) {
-    return null;
+    } catch (e) {
+      return null;
     }
   } finally {
     Timeline.finishSync(); // isolate_init_context
@@ -61,48 +61,70 @@ Future<int?> _initContextInIsolate(Map<String, dynamic> params) async {
 Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params) async {
   Timeline.startSync('isolate_completion');
   try {
-  final handle = params['handle'] as int;
-  final messagesJson = params['messagesJson'] as String;
-  final bufferSize = params['bufferSize'] as int;
-  final hasCallback = params['hasCallback'] as bool;
-  final SendPort? replyPort = params['replyPort'] as SendPort?;
+    final handle = params['handle'] as int;
+    final messagesJson = params['messagesJson'] as String;
+    final bufferSize = params['bufferSize'] as int;
+    final hasCallback = params['hasCallback'] as bool;
+    final SendPort? replyPort = params['replyPort'] as SendPort?;
 
-  final responseBuffer = calloc<Uint8>(bufferSize);
-  final messagesJsonC = messagesJson.toNativeUtf8(allocator: calloc);
+    final responseBuffer = calloc<Uint8>(bufferSize);
+    final messagesJsonC = messagesJson.toNativeUtf8(allocator: calloc);
 
-  Pointer<NativeFunction<CactusTokenCallbackNative>>? callbackPointer;
+    Pointer<NativeFunction<CactusTokenCallbackNative>>? callbackPointer;
 
-  try {
-    if (hasCallback && replyPort != null) {
-      // Set up token callback to send tokens back through isolate
-      _activeTokenCallback = (token) {
-        replyPort.send({'type': 'token', 'data': token});
-        return true; // Always continue in isolate mode
-      };
-      
-      callbackPointer = Pointer.fromFunction<CactusTokenCallbackNative>(
-        _staticTokenCallbackDispatcher
-      );
-    }
+    try {
+      if (hasCallback && replyPort != null) {
+        // Set up token callback to send tokens back through isolate
+        _activeTokenCallback = (token) {
+          replyPort.send({'type': 'token', 'data': token});
+          return true; // Always continue in isolate mode
+        };
+        
+        callbackPointer = Pointer.fromFunction<CactusTokenCallbackNative>(
+          _staticTokenCallbackDispatcher
+        );
+      }
 
       Timeline.startSync('ffi_cactusComplete');
-    final result = bindings.cactusComplete(
-      Pointer.fromAddress(handle),
-      messagesJsonC,
-      responseBuffer.cast<Utf8>(),
-      bufferSize,
-      nullptr,
-      nullptr,
-      callbackPointer ?? nullptr,
-      nullptr,
-    );
+      final result = bindings.cactusComplete(
+        Pointer.fromAddress(handle),
+        messagesJsonC,
+        responseBuffer.cast<Utf8>(),
+        bufferSize,
+        nullptr,
+        nullptr,
+        callbackPointer ?? nullptr,
+        nullptr,
+      );
       Timeline.finishSync();
 
-    debugPrint('Received completion result code: $result');
+      return CactusContext._parseCompletionResponse(responseBuffer, result);
+    } finally {
+      _activeTokenCallback = null;
+      calloc.free(responseBuffer);
+      calloc.free(messagesJsonC);
+    }
+  } finally {
+    Timeline.finishSync(); // isolate_completion
+  }
+}
 
-    if (result > 0) {
-      final responseText = utf8.decode(responseBuffer.asTypedList(result), allowMalformed: true).trim();
-      
+class CactusContext {
+  static String _escapeJsonString(String input) {
+    return input
+        .replaceAll('\\', '\\\\')
+        .replaceAll('"', '\\"')
+        .replaceAll('\n', '\\n')
+        .replaceAll('\r', '\\r')
+        .replaceAll('\t', '\\t');
+  }
+
+  static CactusCompletionResult _parseCompletionResponse(Pointer<Uint8> responseBuffer, int resultCode) {
+    debugPrint('Received completion result code: $resultCode');
+
+    if (resultCode > 0) {
+      final responseText = utf8.decode(responseBuffer.asTypedList(resultCode), allowMalformed: true).trim();
+
       try {
         final jsonResponse = jsonDecode(responseText) as Map<String, dynamic>;
         final success = jsonResponse['success'] as bool? ?? true;
@@ -129,44 +151,14 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
         return CactusCompletionResult(
           success: false,
           response: 'Error: Unable to parse the response',
-          timeToFirstTokenMs: 0.0,
-          totalTimeMs: 0.0,
-          tokensPerSecond: 0.0,
-          prefillTokens: 0,
-          decodeTokens: 0,
-          totalTokens: 0
         );
       }
     } else {
       return CactusCompletionResult(
         success: false,
-        response: 'Error: completion failed with code $result',
-        timeToFirstTokenMs: 0.0,
-        totalTimeMs: 0.0,
-        tokensPerSecond: 0.0,
-        prefillTokens: 0,
-        decodeTokens: 0,
-        totalTokens: 0
+        response: 'Error: completion failed with code $resultCode',
       );
     }
-  } finally {
-    _activeTokenCallback = null;
-    calloc.free(responseBuffer);
-    calloc.free(messagesJsonC);
-    }
-  } finally {
-    Timeline.finishSync(); // isolate_completion
-  }
-}
-
-class CactusContext {
-  static String _escapeJsonString(String input) {
-    return input
-        .replaceAll('\\', '\\\\')
-        .replaceAll('"', '\\"')
-        .replaceAll('\n', '\\n')
-        .replaceAll('\r', '\\r')
-        .replaceAll('\t', '\\t');
   }
 
   static Map<String, String?> _prepareCompletionJson(
@@ -210,54 +202,131 @@ class CactusContext {
 
   static CactusStreamedCompletionResult completionStream(
     int handle,
+    List<ChatMessage> messages, {
+    bool performanceMode = false,
+  }) {
+      if (performanceMode) {
+        return _completionStreamDirect(handle, messages);
+      } else {
+        return _completionStreamIsolate(handle, messages);
+      }
+  }
+
+  static CactusStreamedCompletionResult _completionStreamDirect(
+    int handle,
     List<ChatMessage> messages
   ) {
-    final jsonData = _prepareCompletionJson(messages);
+      final jsonData = _prepareCompletionJson(messages);
+      final controller = StreamController<String>();
+      final resultCompleter = Completer<CactusCompletionResult>();
 
-    final controller = StreamController<String>();
-    final resultCompleter = Completer<CactusCompletionResult>();
-    final replyPort = ReceivePort();
+      // Run completion directly on the main thread
+      Future(() async {
+        try {
+          final messagesJson = jsonData['messagesJson']!;
+          const bufferSize = 4096;
+          final responseBuffer = calloc<Uint8>(bufferSize);
+          final messagesJsonC = messagesJson.toNativeUtf8(allocator: calloc);
 
-    late StreamSubscription subscription;
-    subscription = replyPort.listen((message) {
-      if (message is Map) {
-        final type = message['type'] as String;
-        if (type == 'token') {
-          final token = message['data'] as String;
-          controller.add(token);
-        } else if (type == 'result') {
-          final result = message['data'] as CactusCompletionResult;
-          resultCompleter.complete(result);
-          controller.close();
-          subscription.cancel();
-          replyPort.close();
-        } else if (type == 'error') {
-          final error = message['data'];
-          if (error is CactusCompletionResult) {
-            resultCompleter.complete(error);
-          } else {
-            resultCompleter.completeError(error.toString());
+          Pointer<NativeFunction<CactusTokenCallbackNative>>? callbackPointer;
+
+          try {
+            // Set up token callback to stream tokens
+            _activeTokenCallback = (token) {
+              controller.add(token);
+              return true;
+            };
+            
+            callbackPointer = Pointer.fromFunction<CactusTokenCallbackNative>(
+              _staticTokenCallbackDispatcher
+            );
+
+            Timeline.startSync('ffi_cactusComplete_direct');
+            final result = bindings.cactusComplete(
+              Pointer.fromAddress(handle),
+              messagesJsonC,
+              responseBuffer.cast<Utf8>(),
+              bufferSize,
+              nullptr,
+              nullptr,
+              callbackPointer,
+              nullptr,
+            );
+            Timeline.finishSync();
+
+            final completionResult = CactusContext._parseCompletionResponse(responseBuffer, result);
+            resultCompleter.complete(completionResult);
+            controller.close();
+          } finally {
+            _activeTokenCallback = null;
+            calloc.free(responseBuffer);
+            calloc.free(messagesJsonC);
           }
-          controller.addError(error);
+        } catch (e) {
+          debugPrint('Error in direct completion: $e');
+          final errorResult = CactusCompletionResult(success: false, response: 'Error: $e');
+          resultCompleter.complete(errorResult);
+          controller.addError(e);
           controller.close();
-          subscription.cancel();
-          replyPort.close();
         }
-      }
-    });
+      });
 
-    Isolate.spawn(_isolateCompletionEntry, {
-      'handle': handle,
-      'messagesJson': jsonData['messagesJson']!,
-      'bufferSize': 4096,
-      'hasCallback': true,
-      'replyPort': replyPort.sendPort,
-    });
+      return CactusStreamedCompletionResult(
+        stream: controller.stream,
+        result: resultCompleter.future,
+      );
+  }
 
-    return CactusStreamedCompletionResult(
-      stream: controller.stream,
-      result: resultCompleter.future,
-    );
+  static CactusStreamedCompletionResult _completionStreamIsolate(
+    int handle,
+    List<ChatMessage> messages
+  ) {
+      final jsonData = _prepareCompletionJson(messages);
+
+      final controller = StreamController<String>();
+      final resultCompleter = Completer<CactusCompletionResult>();
+      final replyPort = ReceivePort();
+
+      late StreamSubscription subscription;
+      subscription = replyPort.listen((message) {
+        if (message is Map) {
+          final type = message['type'] as String;
+          if (type == 'token') {
+            final token = message['data'] as String;
+            controller.add(token);
+          } else if (type == 'result') {
+            final result = message['data'] as CactusCompletionResult;
+            resultCompleter.complete(result);
+            controller.close();
+            subscription.cancel();
+            replyPort.close();
+          } else if (type == 'error') {
+            final error = message['data'];
+            if (error is CactusCompletionResult) {
+              resultCompleter.complete(error);
+            } else {
+              resultCompleter.completeError(error.toString());
+            }
+            controller.addError(error);
+            controller.close();
+            subscription.cancel();
+            replyPort.close();
+          }
+        }
+      });
+
+      Isolate.spawn(_isolateCompletionEntry, {
+        'handle': handle,
+        'messagesJson': jsonData['messagesJson']!,
+        'bufferSize': 4096,
+        'hasCallback': true,
+        'replyPort': replyPort.sendPort,
+      });
+
+      return CactusStreamedCompletionResult(
+        stream: controller.stream,
+        result: resultCompleter.future,
+      );
   }
 
   static Future<void> _isolateCompletionEntry(Map<String, dynamic> params) async {

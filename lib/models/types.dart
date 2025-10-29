@@ -56,12 +56,12 @@ class CactusCompletionResult {
   CactusCompletionResult({
     required this.success,
     required this.response,
-    required this.timeToFirstTokenMs,
-    required this.totalTimeMs,
-    required this.tokensPerSecond,
-    required this.prefillTokens,
-    required this.decodeTokens,
-    required this.totalTokens,
+    this.timeToFirstTokenMs = 0.0,
+    this.totalTimeMs = 0.0,
+    this.tokensPerSecond = 0.0,
+    this.prefillTokens = 0,
+    this.decodeTokens = 0,
+    this.totalTokens = 0,
   });
 }
 
