@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:ffi';
 import 'dart:isolate';
 
@@ -28,6 +29,8 @@ void _staticTokenCallbackDispatcher(Pointer<Utf8> tokenC, int tokenId, Pointer<V
 }
 
 Future<int?> _initContextInIsolate(Map<String, dynamic> params) async {
+  Timeline.startSync('isolate_init_context');
+  try {
   final modelPath = params['modelPath'] as String;
   final contextSize = params['contextSize'] as int;
 
@@ -35,7 +38,10 @@ Future<int?> _initContextInIsolate(Map<String, dynamic> params) async {
     debugPrint('Initializing context with model: $modelPath, contextSize: $contextSize');
     final modelPathC = modelPath.toNativeUtf8(allocator: calloc);
     try {
+        Timeline.startSync('ffi_cactusInit');
       final handle = bindings.cactusInit(modelPathC, contextSize);
+        Timeline.finishSync();
+        
       if (handle != nullptr) {
         return handle.address;
       } else {
@@ -46,10 +52,15 @@ Future<int?> _initContextInIsolate(Map<String, dynamic> params) async {
     }
   } catch (e) {
     return null;
+    }
+  } finally {
+    Timeline.finishSync(); // isolate_init_context
   }
 }
 
 Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params) async {
+  Timeline.startSync('isolate_completion');
+  try {
   final handle = params['handle'] as int;
   final messagesJson = params['messagesJson'] as String;
   final bufferSize = params['bufferSize'] as int;
@@ -74,6 +85,7 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
       );
     }
 
+      Timeline.startSync('ffi_cactusComplete');
     final result = bindings.cactusComplete(
       Pointer.fromAddress(handle),
       messagesJsonC,
@@ -84,6 +96,7 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
       callbackPointer ?? nullptr,
       nullptr,
     );
+      Timeline.finishSync();
 
     debugPrint('Received completion result code: $result');
 
@@ -140,6 +153,9 @@ Future<CactusCompletionResult> _completionInIsolate(Map<String, dynamic> params)
     _activeTokenCallback = null;
     calloc.free(responseBuffer);
     calloc.free(messagesJsonC);
+    }
+  } finally {
+    Timeline.finishSync(); // isolate_completion
   }
 }
 
