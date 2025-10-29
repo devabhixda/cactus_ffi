@@ -1,0 +1,29 @@
+PODS:
+  - cactus (0.0.3):
+    - Flutter
+  - Flutter (1.0.0)
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - cactus (from `.`)
+  - Flutter (from `Flutter`)
+  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
+
+EXTERNAL SOURCES:
+  cactus:
+    :path: "."
+  Flutter:
+    :path: Flutter
+  path_provider_foundation:
+    :path: ".symlinks/plugins/path_provider_foundation/darwin"
+
+SPEC CHECKSUMS:
+  cactus: a64653cbdcac93b1ecfa74ca987b806aded63c15
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
+
+PODFILE CHECKSUM: 465af39afcf963473eb9c1a32a1d24e70abf2a16
+
+COCOAPODS: 1.16.2
