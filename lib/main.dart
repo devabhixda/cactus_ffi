@@ -16,15 +16,16 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   String? response;
   double tps = 0;
-  int tokens = 0;
+  double ttft = 0;
   final lm = CactusLM();
 
-  Future<void> generateStreamCompletion() async {
-    
+  Future<void> generateStreamCompletion({bool performanceMode = false}) async {
     try {
       final streamedResult = await lm.generateCompletion(
-        modelUrl: 'https://vlqqczxwyaodtcdmdmlw.supabase.co/storage/v1/object/public/cactus-models/qwen3-0.6.zip',
-        prompt: 'Hello, how are you?'
+        modelUrl:
+            'https://vlqqczxwyaodtcdmdmlw.supabase.co/storage/v1/object/public/cactus-models/qwen3-0.6.zip',
+        prompt: 'Hello, how are you?',
+        usePerformanceMode: performanceMode,
       );
 
       await for (final chunk in streamedResult.stream) {
@@ -32,15 +33,15 @@ class _MainAppState extends State<MainApp> {
           response = (response ?? '') + chunk;
         });
       }
-      
+
       final resp = await streamedResult.result;
       if (resp.success) {
         setState(() {
           response = resp.response;
           tps = resp.tokensPerSecond;
-          tokens = resp.totalTokens;
+          ttft = resp.timeToFirstTokenMs;
         });
-      } 
+      }
     } catch (e) {
       debugPrint('Error generating stream response: $e');
     }
@@ -50,25 +51,117 @@ class _MainAppState extends State<MainApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        body: Center(
-          child: Padding(
-            padding: EdgeInsetsGeometry.all(12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('Cactus LM'),
-                SizedBox(height: 20),
-                ElevatedButton(onPressed: generateStreamCompletion, child: const Text('Generate')),
-                if (response != null) ...[
-                  Text(response ?? ''),
-                ],
-                if (tokens > 0) ...[
-                  const SizedBox(height: 10),
-                  Text('Total Tokens: $tokens, Tokens per Second: ${tps.toStringAsFixed(2)}'),
-                ],
-              ],
-            )
-          )
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('Streaming Completion'),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 1,
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 10),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: () {
+                  generateStreamCompletion(performanceMode: false);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Generate (Isolates)'),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: () {
+                  generateStreamCompletion(performanceMode: true);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Generate (Main Thread)'),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Output section
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (response != null) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Response:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Text(
+                              response!,
+                              style: const TextStyle(color: Colors.black),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            Column(
+                              children: [
+                                const Text(
+                                  'TTFT',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                Text(
+                                  '${ttft.toStringAsFixed(2)} ms',
+                                  style: const TextStyle(color: Colors.black),
+                                ),
+                              ],
+                            ),
+                            Column(
+                              children: [
+                                const Text(
+                                  'TPS',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                Text(
+                                  tps.toStringAsFixed(2),
+                                  style: const TextStyle(color: Colors.black),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
