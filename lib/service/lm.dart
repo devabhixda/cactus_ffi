@@ -26,7 +26,7 @@ class CactusLM {
     final appDocDir = await getApplicationDocumentsDirectory();
     final modelPath = '${appDocDir.path}/$modelFolder';
 
-    _handle = await CactusContext.initContext(modelPath, 2048);
+    _handle ??= await CactusContext.initContext(modelPath, 2048);
 
     if(_handle == null) {
       throw Exception('Cactus model is not loaded. Please load the model before generating completions.');
